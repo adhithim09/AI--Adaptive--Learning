@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-950 text-slate-50 font-sans antialiased;
+}
+
+.glass-panel {
+  @apply bg-slate-900/70 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-soft;
+}
+
+.page-shell {
+  @apply min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50;
+}
+
+.card-muted {
+  @apply bg-slate-900/60 border border-slate-800/80 rounded-2xl;
+}
+
+.section-grid {
+  @apply grid gap-6 md:grid-cols-2 xl:grid-cols-3;
+}
+
