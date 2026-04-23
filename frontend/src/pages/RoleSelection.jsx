@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
+import { UserAPI } from "../services/api";
 
 const roles = [
   {
@@ -29,23 +30,22 @@ export default function RoleSelection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  const { setUser, user } = useAuth();
+  const { setUser } = useAuth();
 
   const handleContinue = async () => {
     if (!selectedRole) return;
     try {
       setSaving(true);
       setError("");
-      // Demo mode: no backend call
-      if (user) {
-        const next = { ...user, role: selectedRole };
-        setUser(next);
-        localStorage.setItem("mockUser", JSON.stringify(next));
+      
+      const { data } = await UserAPI.selectRole({ role: selectedRole });
+      if (data.user) {
+        setUser(data.user);
       }
       navigate("/subjects");
     } catch (err) {
       setError(
-        err?.message || "Unable to save role. Please retry."
+        err?.response?.data?.message || err?.message || "Unable to save role. Please retry."
       );
     } finally {
       setSaving(false);

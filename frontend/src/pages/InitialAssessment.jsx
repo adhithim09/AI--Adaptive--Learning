@@ -4,12 +4,13 @@ import QuizCard from "../components/QuizCard";
 import ProgressBar from "../components/ProgressBar";
 import { useProgress } from "../context/ProgressContext";
 import { useAuth } from "../context/AuthContext";
-import { CourseAPI } from "../services/api";
+import { AssessmentAPI, CourseAPI } from "../services/api";
 
 export default function InitialAssessment() {
   const [questions, setQuestions] = useState([]);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState({});
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [generatingCourse, setGeneratingCourse] = useState(false);
   const [results, setResults] = useState(null);
@@ -18,47 +19,47 @@ export default function InitialAssessment() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const [sessionId, setSessionId] = useState(null);
+
   useEffect(() => {
     const fetchQuestions = async () => {
-      // Demo mode: local stub questions (no backend call)
-      setQuestions([
-        {
-          id: "q1",
-          text: "Which loss function is commonly used for regression problems?",
-          concept: "Regression",
-          options: [
-            { id: "a", label: "Cross-entropy loss" },
-            { id: "b", label: "Mean squared error" },
-            { id: "c", label: "Hinge loss" },
-            { id: "d", label: "KL divergence" }
-          ]
-        },
-        {
-          id: "q2",
-          text: "In binary classification, which metric is most appropriate when classes are highly imbalanced?",
-          concept: "Classification",
-          options: [
-            { id: "a", label: "Accuracy" },
-            { id: "b", label: "Precision" },
-            { id: "c", label: "Recall or F1-score" },
-            { id: "d", label: "MSE" }
-          ]
-        },
-        {
-          id: "q3",
-          text: "Backpropagation primarily relies on which mathematical operation?",
-          concept: "Neural Networks",
-          options: [
-            { id: "a", label: "Matrix inversion" },
-            { id: "b", label: "Gradient computation via chain rule" },
-            { id: "c", label: "Fourier transform" },
-            { id: "d", label: "Sampling" }
-          ]
+      try {
+        setLoading(true);
+        setError("");
+        const subject = (user?.subjects && user.subjects[0]) || "Machine Learning";
+        const { data } = await AssessmentAPI.generate(subject);
+
+        if (!data?.questions) {
+          throw new Error("No questions returned from API");
         }
-      ]);
+
+        setSessionId(data.sessionId);
+
+        // Transform LLM output to format expected by QuizCard
+        const transformed = data.questions.map((q, idx) => ({
+          id: `q-${idx}`,
+          text: q.question,
+          concept: q.concept,
+          answer: q.answer,
+          options: q.options.map((opt, oIdx) => ({
+            id: String.fromCharCode(97 + oIdx), // a, b, c, d
+            label: opt
+          }))
+        }));
+
+        setQuestions(transformed);
+      } catch (err) {
+        console.error("Fetch error:", err);
+        setError(err?.response?.data?.message || err.message || "Failed to generate questions.");
+      } finally {
+        setLoading(false);
+      }
     };
-    fetchQuestions();
-  }, []);
+
+    if (user) {
+      fetchQuestions();
+    }
+  }, [user]);
 
   const handleSelect = (optionId) => {
     const q = questions[index];
@@ -75,19 +76,19 @@ export default function InitialAssessment() {
     try {
       setSubmitting(true);
       setError("");
-      // Demo mode: local scoring stub (no backend call)
-      const stub = {
-        concepts: [
-          { name: "Regression", score: 80 },
-          { name: "Classification", score: 60 },
-          { name: "Neural Networks", score: 30 }
-        ]
-      };
-      setResults(stub);
-      addXp(120);
+      const { data } = await AssessmentAPI.submit({ sessionId, answers });
+      
+      // Map conceptPerformance to name/value for ProgressBar
+      const formattedResults = (data.conceptPerformance || []).map(item => ({
+        name: item.concept,
+        value: item.score
+      }));
+      
+      setResults(formattedResults);
+      if (data.xpAward) addXp(data.xpAward);
     } catch (err) {
       setError(
-        err?.message || "Unable to submit assessment. Please retry."
+        err?.response?.data?.message || err?.message || "Unable to submit assessment. Please retry."
       );
     } finally {
       setSubmitting(false);
@@ -95,7 +96,7 @@ export default function InitialAssessment() {
   };
 
   const handleGenerateCourse = async () => {
-    if (!results) return;
+    if (!results || !Array.isArray(results)) return;
 
     const selectedSubject = Array.isArray(user?.subjects) && user.subjects.length
       ? user.subjects[0]
@@ -104,9 +105,16 @@ export default function InitialAssessment() {
     try {
       setGeneratingCourse(true);
       setError("");
+      
+      // Map frontend results (name/value) back to backend expected format (concept/score)
+      const assessmentResults = results.map(r => ({
+        concept: r.name,
+        score: r.value
+      }));
+
       await CourseAPI.generate({
         subject: selectedSubject,
-        assessmentResults: results
+        assessmentResults: assessmentResults
       });
       navigate("/course");
     } catch (err) {
@@ -152,7 +160,17 @@ export default function InitialAssessment() {
           </div>
         )}
 
-        {!results && current && (
+        {loading && !results && (
+          <div className="glass-panel p-10 flex flex-col items-center justify-center space-y-4">
+            <div className="h-10 w-10 rounded-full border-4 border-primary-500/20 border-t-primary-500 animate-spin" />
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-slate-100">Generating Assessment</h3>
+              <p className="text-sm text-slate-400">Our AI is crafting custom questions based on your subjects...</p>
+            </div>
+          </div>
+        )}
+
+        {!loading && !results && current && (
           <>
             <QuizCard
               question={current}
@@ -190,11 +208,11 @@ export default function InitialAssessment() {
                 Concept-wise performance
               </h2>
               <div className="space-y-3">
-                {results.concepts.map((c) => (
+                {results.map((c) => (
                   <ProgressBar
                     key={c.name}
                     label={c.name}
-                    value={c.score}
+                    value={c.value}
                     subtle
                   />
                 ))}

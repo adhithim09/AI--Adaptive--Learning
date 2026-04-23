@@ -35,6 +35,7 @@ export const UserAPI = {
 };
 
 export const AssessmentAPI = {
+  generate: (subject) => api.get(`/assessment/generate?subject=${encodeURIComponent(subject)}`),
   getQuestions: () => api.get("/assessment/questions"),
   submit: (payload) => api.post("/assessment/submit", payload)
 };
@@ -46,6 +47,10 @@ export const AnalysisAPI = {
 export const CourseAPI = {
   generate: (payload) => api.post("/course/generate", payload),
   myCourse: () => api.get("/course/my-course")
+};
+
+export const StudyAPI = {
+  generate: (subject) => api.get(`/study/generate?subject=${encodeURIComponent(subject)}`)
 };
 
 export async function generateCourse(data) {

@@ -3,32 +3,9 @@ import { httpError } from "../utils/httpError.js";
 import { generateCourseFromLLM } from "../utils/llmClient.js";
 
 function categorizeScore(score) {
-  if (score < 50) return "weak";
-  if (score <= 75) return "medium";
-  return "strong";
-}
-
-function normalizeAssessmentResults(assessmentResults) {
-  if (!assessmentResults) return [];
-
-  const source = Array.isArray(assessmentResults)
-    ? assessmentResults
-    : Array.isArray(assessmentResults.concepts)
-      ? assessmentResults.concepts
-      : [];
-
-  return source
-    .map((item) => {
-      const concept = item.concept || item.name;
-      const score = Number(item.score);
-      if (!concept || Number.isNaN(score)) return null;
-      return {
-        concept: String(concept).trim(),
-        score,
-        category: categorizeScore(score)
-      };
-    })
-    .filter(Boolean);
+  if (score < 50) return "Weak";
+  if (score <= 75) return "Moderate";
+  return "Strong";
 }
 
 export async function generateCourse(req, res, next) {
@@ -38,48 +15,84 @@ export async function generateCourse(req, res, next) {
 
     if (!userId) return next(httpError(401, "Unauthorized"));
     if (!subject || typeof subject !== "string") return next(httpError(400, "Missing subject"));
-    if (!assessmentResults) return next(httpError(400, "Missing assessmentResults"));
-    if (!process.env.XAI_API_KEY) return next(httpError(500, "XAI_API_KEY is missing"));
+    if (!assessmentResults || !Array.isArray(assessmentResults)) {
+      return next(httpError(400, "Missing or invalid assessmentResults"));
+    }
+    if (!process.env.GEMINI_API_KEY) return next(httpError(500, "GEMINI_API_KEY is missing"));
 
-    const categorizedResults = normalizeAssessmentResults(assessmentResults);
-    if (!categorizedResults.length) {
-      return next(httpError(400, "assessmentResults must include concept/name and score"));
+    // 2 & 3. Build formatted concept list and classify levels
+    const formattedConcepts = assessmentResults
+      .map((item) => {
+        const concept = item.concept || item.name;
+        const score = Number(item.score);
+        if (!concept || Number.isNaN(score)) return null;
+        const level = categorizeScore(score);
+        return `* ${concept}: ${score}% (${level})`;
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    if (!formattedConcepts) {
+      return next(httpError(400, "assessmentResults must include concept and score"));
     }
 
-    const prompt = `
-Generate a personalized course for this subject: ${subject.trim()}
+    // 4. Final Prompt construction
+    const prompt = `Generate a structured learning course.
 
-Assessment results (categorized):
-${JSON.stringify(categorizedResults, null, 2)}
+Subject: ${subject.trim()}
 
-Hard requirements:
-1) Return strictly valid JSON only. Do not include markdown, prose, notes, or explanations.
-2) If your draft is not valid JSON, regenerate internally and output only valid JSON.
-3) Build a logical progression from foundational topics to advanced topics.
-4) Include prerequisites before any advanced module that depends on them.
-5) Keep modules well-structured, concise, and pedagogically ordered.
-6) Focus significantly more on weak areas, medium depth for medium areas, and concise reinforcement for strong areas.
+Student Performance:
+${formattedConcepts}
 
-Output schema (must match exactly):
+Requirements:
+* Focus heavily on weak areas
+* Include prerequisites first
+* Build logical progression
+* Keep modules structured
+* For each module, include 2–4 high-quality learning resources.
+
+Resource Quality Rules:
+* For video resources:
+  - DO NOT generate direct YouTube video URLs (like watch?v=...)
+  - ALWAYS generate YouTube search links using: https://www.youtube.com/results?search_query=<topic>
+  - Ensure query matches the concept name and replace spaces with +
+* Include official documentation where applicable
+* Include beginner-friendly articles if needed
+* Ensure links are real and relevant
+* Avoid broken or generic links
+* Resources must match module concepts
+* Avoid duplicate links
+* Keep titles meaningful
+* Use real URLs (not placeholders)
+
+Return ONLY valid JSON:
 {
-  "title": "string",
-  "description": "string",
+  "title": "",
+  "description": "",
   "modules": [
     {
-      "title": "string",
-      "level": "weak|medium|strong",
-      "estimatedTime": "string",
-      "concepts": ["string"]
+      "title": "",
+      "level": "",
+      "estimatedTime": "",
+      "concepts": [],
+      "resources": [
+        {
+          "title": "",
+          "type": "video | article | documentation",
+          "url": ""
+        }
+      ]
     }
   ]
-}
-`;
+}`;
+
+    console.log("Prompt sent to Gemini:", prompt);
 
     let parsed;
     try {
       parsed = await generateCourseFromLLM(prompt);
     } catch (llmErr) {
-      return next(httpError(502, llmErr.message || "Failed to generate course from LLM"));
+      return next(httpError(502, llmErr.message || "Failed to generate course from Gemini"));
     }
 
     const course = await Course.create({

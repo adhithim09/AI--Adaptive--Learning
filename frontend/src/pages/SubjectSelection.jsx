@@ -2,31 +2,32 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SubjectCard from "../components/SubjectCard";
 import { useAuth } from "../context/AuthContext";
+import { UserAPI } from "../services/api";
 
 const SUBJECTS = [
   {
-    id: "ml",
+    id: "Machine Learning",
     title: "Machine Learning",
     description:
       "Supervised, unsupervised, model evaluation, and deployment workflows."
   },
   {
-    id: "ds",
+    id: "Data Structures",
     title: "Data Structures",
     description: "Arrays, trees, graphs, and complexity-aware problem solving."
   },
   {
-    id: "la",
+    id: "Linear Algebra",
     title: "Linear Algebra",
     description: "Vector spaces, eigenvalues, and matrix decompositions."
   },
   {
-    id: "os",
+    id: "Operating Systems",
     title: "Operating Systems",
     description: "Processes, memory, scheduling, and synchronization."
   },
   {
-    id: "db",
+    id: "Database Systems",
     title: "Database Systems",
     description: "Relational design, indexing, transactions, and queries."
   }
@@ -37,7 +38,7 @@ export default function SubjectSelection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  const { user, setUser } = useAuth();
+  const { setUser } = useAuth();
 
   const toggle = (id) => {
     setSelected((prev) =>
@@ -50,16 +51,15 @@ export default function SubjectSelection() {
     try {
       setSaving(true);
       setError("");
-      // Demo mode: no backend call
-      if (user) {
-        const next = { ...user, subjects: selected };
-        setUser(next);
-        localStorage.setItem("mockUser", JSON.stringify(next));
+      
+      const { data } = await UserAPI.selectSubjects({ subjects: selected });
+      if (data.user) {
+        setUser(data.user);
       }
       navigate("/assessment");
     } catch (err) {
       setError(
-        err?.message || "Unable to save subjects. Please retry."
+        err?.response?.data?.message || err?.message || "Unable to save subjects. Please retry."
       );
     } finally {
       setSaving(false);

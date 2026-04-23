@@ -16,13 +16,16 @@ import Gamification from "./pages/Gamification";
 import CourseDashboard from "./pages/CourseDashboard";
 
 function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return null; // Or a global spinner
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return children;
 }
 
 function ShellLayout({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) return null;
 
   if (!isAuthenticated) {
     return <>{children}</>;

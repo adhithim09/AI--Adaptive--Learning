@@ -28,13 +28,6 @@ export default function Signup() {
       if (!token) throw new Error("Signup failed: token was not returned.");
 
       login(token);
-      localStorage.removeItem("mockUser");
-
-      setUser((prev) => ({
-        ...(prev || {}),
-        email: values.email,
-        name: values.name
-      }));
       navigate("/role");
     } catch (err) {
       const message =

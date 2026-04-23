@@ -23,15 +23,6 @@ export default function Login() {
       if (!token) throw new Error("Login failed: token was not returned.");
 
       login(token);
-      localStorage.removeItem("mockUser");
-
-      // Keep in-memory user aligned immediately without waiting for reload.
-      const name = values.email?.split?.("@")?.[0] || "Learner";
-      setUser((prev) => ({
-        ...(prev || {}),
-        email: values.email,
-        name
-      }));
       navigate("/role");
     } catch (err) {
       const message =

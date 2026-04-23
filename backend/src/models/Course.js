@@ -12,6 +12,16 @@ const moduleSchema = new mongoose.Schema(
         validator: (concepts) => concepts.every((concept) => typeof concept === "string" && concept.trim().length > 0),
         message: "Each concept must be a non-empty string."
       }
+    },
+    resources: {
+      type: [
+        {
+          title: { type: String, required: true },
+          type: { type: String, enum: ["video", "article", "documentation"], required: true },
+          url: { type: String, required: true }
+        }
+      ],
+      default: []
     }
   },
   { _id: false }

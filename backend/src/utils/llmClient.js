@@ -1,3 +1,6 @@
+import axios from "axios";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 function extractJsonPayload(raw) {
   if (typeof raw !== "string") return "";
   const trimmed = raw.trim();
@@ -15,73 +18,87 @@ function extractJsonPayload(raw) {
   return trimmed;
 }
 
-function getRawLLMResponse(completion) {
-  const content = completion?.choices?.[0]?.message?.content;
+export async function generateAssessmentQuestions(subject) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY is missing");
 
-  if (typeof content === "string") return content;
+  const prompt = `
+Generate 10 multiple-choice questions (MCQs) for the subject: "${subject}".
+Each question must include:
+- question: The question text.
+- options: An array of 4 strings.
+- answer: The correct option string.
+- concept: The specific concept name being tested.
 
-  if (Array.isArray(content)) {
-    const textParts = content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
-        return "";
-      })
-      .filter(Boolean);
-    return textParts.join("\n").trim();
+Return ONLY strictly valid JSON in the following format, with no markdown code blocks, no prose, and no explanation:
+{
+  "questions": [
+    {
+      "question": "...",
+      "options": ["...", "...", "...", "..."],
+      "answer": "...",
+      "concept": "..."
+    }
+  ]
+}
+  `;
+
+  try {
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "llama-3.1-8b-instant",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    const raw = response.data.choices?.[0]?.message?.content || "";
+    const jsonStr = extractJsonPayload(raw);
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.error("Groq API Error:", err.response?.data || err.message);
+    throw new Error("Failed to generate assessment questions");
   }
-
-  if (content && typeof content === "object") {
-    return JSON.stringify(content);
-  }
-
-  return "";
 }
 
 export async function generateCourseFromLLM(prompt) {
-  if (!process.env.XAI_API_KEY) {
-    throw new Error("XAI_API_KEY is missing");
-  }
-
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: "grok-2-latest",
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an adaptive curriculum designer. Always return strictly valid JSON that matches the required schema, with no extra text."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.4
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("xAI chat completion request failed:", errorText);
-    throw new Error("Failed to generate course from xAI");
-  }
-
-  const completion = await response.json();
-  const rawResponse = getRawLLMResponse(completion);
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is missing");
 
   try {
-    return JSON.parse(extractJsonPayload(rawResponse));
-  } catch {
-    console.error("Failed to parse LLM response for course generation.");
-    console.error("Raw LLM response:", rawResponse);
-    console.error("Raw completion payload:", completion);
-    throw new Error("Invalid JSON response from course generator");
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const raw = response.text();
+
+    console.log("Gemini raw response:", raw);
+
+    const jsonStr = extractJsonPayload(raw);
+    
+    try {
+      return JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.error("Gemini JSON Parse Error:", parseErr.message);
+      console.error("Raw response content:", raw);
+      throw new Error("Failed to parse course structure from Gemini response");
+    }
+  } catch (err) {
+    console.error("Gemini API Error (Course):", err.message);
+    throw new Error("Failed to generate course from Gemini");
   }
 }
