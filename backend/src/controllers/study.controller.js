@@ -6,28 +6,27 @@ export async function generateStudyMaterials(req, res, next) {
     const { subject } = req.query;
     if (!subject) return next(httpError(400, "Subject is required"));
 
-    const flashcardsPrompt = `
-Generate 5–8 flashcards for:
-Subject: ${subject}
+    const prompt = `
+Generate study materials for subject: "${subject}"
 
-Each flashcard must include:
-* question
-* answer
+Include both flashcards and a concept mind map in one response.
 
-Return ONLY JSON:
+Flashcards:
+- Generate 5–8 flashcards
+- Each flashcard must have "question" and "answer"
+
+Mind map:
+- Simple concept mind map with logical layout
+- Each node: "id", "data": { "label": "..." }, "position": { "x": number, "y": number }
+- Each edge: "id", "source", "target", "animated": true
+- Use unique edge ids and valid source/target node ids
+- Suggested node style (optional on nodes): background #020617, color #e2e8f0, border 1px solid #1e293b
+
+Return ONLY valid JSON:
 {
   "flashcards": [
     { "question": "", "answer": "" }
-  ]
-}
-    `;
-
-    const mindmapPrompt = `
-Generate a simple concept mind map for:
-Subject: ${subject}
-
-Return ONLY JSON:
-{
+  ],
   "nodes": [
     { "id": "1", "data": { "label": "Main Topic" }, "position": { "x": 0, "y": 0 } }
   ],
@@ -35,33 +34,15 @@ Return ONLY JSON:
     { "id": "e1-2", "source": "1", "target": "2", "animated": true }
   ]
 }
-
-Important: 
-- Include x and y positions for nodes (layout them out logically).
-- Include "data" with "label" for each node.
-- Ensure edges have unique ids and valid source/target.
-- For nodes style use this:
-{
-  "background": "#020617",
-  "color": "#e2e8f0",
-  "border": "1px solid #1e293b",
-  "borderRadius": 999,
-  "paddingInline": 16,
-  "paddingBlock": 6,
-  "fontSize": 11
-}
     `;
 
-    const [flashcardsData, mindmapData] = await Promise.all([
-      generateCourseFromLLM(flashcardsPrompt),
-      generateCourseFromLLM(mindmapPrompt)
-    ]);
+    const data = await generateCourseFromLLM(prompt);
 
     res.json({
-      flashcards: flashcardsData.flashcards || [],
+      flashcards: data.flashcards || [],
       mindmap: {
-        nodes: mindmapData.nodes || [],
-        edges: mindmapData.edges || []
+        nodes: data.nodes || [],
+        edges: data.edges || []
       }
     });
   } catch (e) {

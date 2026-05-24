@@ -36,18 +36,57 @@ app.use((err, _req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
 
+let httpServer = null;
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n${signal} received, shutting down...`);
+
+  if (httpServer) {
+    httpServer.closeAllConnections?.();
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.connection.close();
+  }
+
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
 async function start() {
   if (!MONGO_URI) {
-    // Fail loudly with a clear message (prevents confusing 500s).
     throw new Error("MONGO_URI is missing. Create backend/.env from .env.example");
   }
+
   await mongoose.connect(MONGO_URI);
   console.log("MongoDB connected");
-  app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
+
+  await new Promise((resolve, reject) => {
+    httpServer = app.listen(PORT, () => {
+      console.log(`API running on http://localhost:${PORT}`);
+      resolve();
+    });
+
+    httpServer.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `Port ${PORT} is already in use. Run "npm run dev" again (it frees the port automatically) or stop the other process.`
+        );
+        process.exit(1);
+        return;
+      }
+      reject(err);
+    });
+  });
 }
 
 start().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

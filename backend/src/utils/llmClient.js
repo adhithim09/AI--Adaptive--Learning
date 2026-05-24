@@ -1,6 +1,14 @@
 import axios from "axios";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+function getGeminiModel(client, generationConfig) {
+  const options = { model: GEMINI_MODEL };
+  if (generationConfig) options.generationConfig = generationConfig;
+  return client.getGenerativeModel(options);
+}
+
 function extractJsonPayload(raw) {
   if (typeof raw !== "string") return "";
   const trimmed = raw.trim();
@@ -46,10 +54,7 @@ Return ONLY strictly valid JSON in the following format, with no markdown code b
   try {
     const client = new GoogleGenerativeAI(apiKey);
     console.log("Gemini client initialized");
-    const model = client.getGenerativeModel({ 
-      model: "gemini-flash-latest",
-      generationConfig: { responseMimeType: "application/json" }
-    });
+    const model = getGeminiModel(client, { responseMimeType: "application/json" });
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -71,7 +76,7 @@ export async function generateCourseFromLLM(prompt) {
   try {
     const client = new GoogleGenerativeAI(apiKey);
     console.log("Gemini client initialized");
-    const model = client.getGenerativeModel({ model: "gemini-flash-latest" });
+    const model = getGeminiModel(client);
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -117,10 +122,7 @@ Return ONLY strictly valid JSON in the following format:
   try {
     const client = new GoogleGenerativeAI(apiKey);
     console.log("Gemini client initialized");
-    const model = client.getGenerativeModel({ 
-      model: "gemini-flash-latest",
-      generationConfig: { responseMimeType: "application/json" }
-    });
+    const model = getGeminiModel(client, { responseMimeType: "application/json" });
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -160,7 +162,7 @@ Format the output in clean Markdown.
   try {
     const client = new GoogleGenerativeAI(apiKey);
     console.log("Gemini client initialized");
-    const model = client.getGenerativeModel({ model: "gemini-flash-latest" });
+    const model = getGeminiModel(client);
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
